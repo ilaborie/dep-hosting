@@ -1,0 +1,6 @@
+
+### try get gradle distribution
+
+GET http://localhost:7000/distributions/gradle-4.5.1-all.zip
+
+###
