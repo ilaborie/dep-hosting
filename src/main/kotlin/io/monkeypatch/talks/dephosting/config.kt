@@ -8,6 +8,7 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.time.Duration
+import java.time.Instant
 
 
 private val config = ConfigFactory.load()
@@ -34,11 +35,16 @@ data class ServerConfig(val port: Int = 8080, private val log: String = LogLevel
         get() = LogLevel.valueOf(log)
 }
 
-data class Proxy(val hosts: List<String> = emptyList(), val cache: Duration? = null) {
+data class Proxy(val hosts: List<String> = emptyList(), val cache: Duration? = null, val npmProxy: Boolean = false) {
     init {
         if (hosts.isEmpty()) {
             logger.warn { "No hosts to proxy !" }
         }
+    }
+
+    fun isOutdated(proxyFile: File): Boolean {
+        val delta by lazy { Instant.now().toEpochMilli() - proxyFile.lastModified() }
+        return cache != null && delta > cache.toMillis()
     }
 }
 

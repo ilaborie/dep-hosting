@@ -34,11 +34,13 @@ dependencies {
   proxies {
 
     npm {
+      npmProxy = true
       hosts = ["https://registry.npmjs.org/"]
       cache = 1 day
     }
 
     maven {
+      npmProxy = false
       hosts = [
         // Google maven repo
         "https://dl.google.com/dl/android/maven2/",
@@ -54,6 +56,7 @@ dependencies {
     }
 
     other {
+      npmProxy = false
       hosts = [
         // Gradle wrapper
         "https://downloads.gradle.org/"

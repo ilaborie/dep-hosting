@@ -10,7 +10,7 @@ import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.Instant
+import java.net.URLEncoder
 
 private val logger = KotlinLogging.logger {}
 
@@ -45,48 +45,58 @@ fun serve(config: ServerConfig = ServerConfig(),
 }
 
 private fun Context.proxy(dest: File, proxy: Proxy) {
-//    val path1 = path().substring(1) // remove prefix '/'
     val path = splats().joinToString(separator = "/")
-    val headers = headerMap()
-        .filterKeys { it != "Accept-Encoding" }
+    val headers = headerMap().filterKeys { it != "Accept-Encoding" } // avoid
 
     val proxyFile = dest.resolve(path)
 
-    val (hosts, cache) = proxy
 
     if (proxyFile.exists()) {
         logger.debug { "File $proxyFile already present" }
-        if (cache != null && Instant.now().toEpochMilli() - proxyFile.lastModified() > cache.toMillis()) {
+        if (proxy.isOutdated(proxyFile)) {
             logger.debug { "Cache expired for $proxyFile" }
-            downloadHosts(hosts, path, proxyFile, headers)
+            downloadHosts(proxy, path, proxyFile, headers)
         }
     } else {
         logger.debug { "File $proxyFile not (yet) present" }
-        downloadHosts(hosts, path, proxyFile, headers)
+        downloadHosts(proxy, path, proxyFile, headers)
     }
 }
 
-private fun downloadHosts(hosts: List<String>,
+private fun downloadHosts(proxy: Proxy,
                           path: String,
                           proxyFile: File,
                           headers: Map<String, String>) {
-    val success = hosts.fold(false) { done, host ->
-        done || tryDownload(host, path, proxyFile, headers)
+    val success = proxy.hosts.fold(false) { done, host ->
+        done || tryDownload(host, proxy.npmProxy, path, proxyFile, headers)
     }
     if (!success) {
-        logger.error { "💣 Cannot retrieve $path into $hosts" }
-        throw HaltException(404, "Cannot retrieve $path into $hosts")
+        logger.error { "💣 Cannot retrieve $path into ${proxy.hosts}" }
+        throw HaltException(404, "Cannot retrieve $path into ${proxy.hosts}")
     }
 }
 
 
-private fun tryDownload(host: String, path: String, dest: File, headers: Map<String, String>): Boolean {
+private fun tryDownload(host: String,
+                        npmProxy: Boolean,
+                        path: String,
+                        dest: File,
+                        headers: Map<String, String>): Boolean {
+    // might create folder
     val parentFile = dest.parentFile
     if (parentFile.mkdirs()) {
         logger.debug { "Create folder $parentFile" }
     }
 
-    val url = URL(host + path)
+    // Fix path for npm (if needed)
+    val path2 = when {
+        npmProxy && path[0] == '@' -> path[0] + URLEncoder.encode(path.substring(1), "UTF-8")
+        npmProxy                   -> URLEncoder.encode(path, "UTF-8")
+        else                       -> path
+    }
+
+    // should keep first @ for npm repo
+    val url = URL(host + path2)
     val connection = url.openHttpConnection(headers)
 
     logger.debug { "Try download $url ..." }
