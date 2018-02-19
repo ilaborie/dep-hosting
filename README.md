@@ -87,12 +87,13 @@ You might have to fix repeat these steps few times to fix all configuration issu
 
 ### Running the repository
 
-You just need to serve static files from the hosting path (from configuration).
+Now you can replace the dep-hosting server by a static web server.
 
-=> run your Apache, NGinx, server 
+You just need to serve files from the hosting path (see configuration).
+
+=> run your Apache, NGinx, ... 
 
 #### Serve with NodeJS and [http-server](https://github.com/indexzero/http-server)
-
 
 1. install [http-server](https://github.com/indexzero/http-server) with `npm i -g http-server`
 2. run `http-server <hosting-path>  -p <hosting-port> -d`
