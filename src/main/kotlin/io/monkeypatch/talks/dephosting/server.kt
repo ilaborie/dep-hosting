@@ -9,6 +9,7 @@ import mu.KotlinLogging
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.InetAddress
 import java.net.URL
 import java.net.URLEncoder
 
@@ -33,42 +34,43 @@ fun serve(config: ServerConfig = ServerConfig(),
         .enableStaticFiles("static")
         .enableStaticFiles(proxies.file.absolutePath, EXTERNAL) // static
 
-    return proxies.proxies.toList()
-        // proxies
+    // proxies
+    return proxies.allProxies
         .fold(server) { srv, (key, proxy) ->
             val file = proxies.downloadFile(key)
             logger.info { "Proxy /$key/* to $file" }
-            srv.before("/$key/*") { it.proxy(file, proxy) } // route
+            srv.before("/$key/*") { it.proxy(key, config.port, file, proxy) }
         }
         // Let's go
         .start()
 }
 
-private fun Context.proxy(dest: File, proxy: Proxy) {
+private fun Context.proxy(key: String, port: Int, dest: File, proxy: Proxy) {
     val path = splats().joinToString(separator = "/")
     val headers = headerMap().filterKeys { it != "Accept-Encoding" } // avoid
 
     val proxyFile = dest.resolve(path)
 
-
     if (proxyFile.exists()) {
         logger.debug { "File $proxyFile already present" }
         if (proxy.isOutdated(proxyFile)) {
             logger.debug { "Cache expired for $proxyFile" }
-            downloadHosts(proxy, path, proxyFile, headers)
+            downloadHosts(key, port, proxy, path, proxyFile, headers)
         }
     } else {
         logger.debug { "File $proxyFile not (yet) present" }
-        downloadHosts(proxy, path, proxyFile, headers)
+        downloadHosts(key, port, proxy, path, proxyFile, headers)
     }
 }
 
-private fun downloadHosts(proxy: Proxy,
+private fun downloadHosts(key: String,
+                          port: Int,
+                          proxy: Proxy,
                           path: String,
                           proxyFile: File,
                           headers: Map<String, String>) {
     val success = proxy.hosts.fold(false) { done, host ->
-        done || tryDownload(host, proxy.npmProxy, path, proxyFile, headers)
+        done || tryDownload(key, port, host, proxy, path, proxyFile, headers)
     }
     if (!success) {
         logger.error { "💣 Cannot retrieve $path into ${proxy.hosts}" }
@@ -77,8 +79,10 @@ private fun downloadHosts(proxy: Proxy,
 }
 
 
-private fun tryDownload(host: String,
-                        npmProxy: Boolean,
+private fun tryDownload(key: String,
+                        port: Int,
+                        host: String,
+                        proxy: Proxy,
                         path: String,
                         dest: File,
                         headers: Map<String, String>): Boolean {
@@ -90,9 +94,9 @@ private fun tryDownload(host: String,
 
     // Fix path for npm (if needed)
     val path2 = when {
-        npmProxy && path[0] == '@' -> path[0] + URLEncoder.encode(path.substring(1), "UTF-8")
-        npmProxy                   -> URLEncoder.encode(path, "UTF-8")
-        else                       -> path
+        proxy.npmProxy && path[0] == '@' -> path[0] + URLEncoder.encode(path.substring(1), "UTF-8")
+        proxy.npmProxy                   -> URLEncoder.encode(path, "UTF-8")
+        else                             -> path
     }
 
     // should keep first @ for npm repo
@@ -101,12 +105,25 @@ private fun tryDownload(host: String,
 
     logger.debug { "Try download $url ..." }
     return try {
-        val copied = connection.inputStream.copyTo(dest.outputStream())
+        if (proxy.npmProxy) {
+            val regex = Regex(Regex.escape("https://registry.npmjs.org/"))
+            val localIp = InetAddress.getLocalHost().hostAddress
+            val newValue = "http://$localIp:$port/$key-registry/"
+
+            connection.inputStream.bufferedReader(Charsets.UTF_8)
+                .readText()
+                .replace(regex, newValue)
+                .also {
+                    dest.writeText(it, Charsets.UTF_8)
+                }
+        } else {
+            connection.inputStream.copyTo(dest.outputStream())
+        }
         logger.info { "✅ Download $url from $host" }
-        logger.debug { "... to file $dest ($copied bytes)" }
+        logger.debug { "... to file $dest ${dest.length()}" }
         true
-    } catch (_: IOException) {
-        logger.warn { "fail to download $url" }
+    } catch (e: IOException) {
+        logger.warn(e) { "fail to download $url" }
         false
     }
 }

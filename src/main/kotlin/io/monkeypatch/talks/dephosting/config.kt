@@ -51,6 +51,17 @@ data class Proxy(val hosts: List<String> = emptyList(), val cache: Duration? = n
 data class DependenciesConfig(private val downloadPath: String? = null,
                               val proxies: Map<String, Proxy> = emptyMap()) {
 
+    val allProxies: List<Pair<String, Proxy>>
+        get() {
+            return proxies.toList()
+                .flatMap { (key, proxy) ->
+                    if (proxy.npmProxy)
+                        listOf(key to proxy, "$key-registry" to Proxy(listOf("https://registry.npmjs.org/")))
+                    else
+                        listOf(key to proxy)
+                }
+        }
+
     init {
         proxies.forEach { key, proxy ->
             logger.debug { "Proxy for $key: $proxy" }
