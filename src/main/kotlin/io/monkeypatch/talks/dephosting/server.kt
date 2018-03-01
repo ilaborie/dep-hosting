@@ -123,7 +123,7 @@ private fun tryDownload(key: String,
         logger.debug { "... to file $dest ${dest.length()}" }
         true
     } catch (e: IOException) {
-        logger.warn(e) { "fail to download $url" }
+        logger.warn { "fail to download $url" }
         false
     }
 }
